@@ -1,4 +1,6 @@
 # pwrLVL9000
+<img width="1024" height="1536" alt="pwrlvl9000" src="https://github.com/user-attachments/assets/1100e03b-ecd6-4593-9491-9cae3c646d95" />
+
 
 **Author:** sinX
 **Platform:** Kali Linux
