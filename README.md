@@ -1,5 +1,6 @@
 # pwrLVL9000
-<img width="1024" height="1536" alt="pwrlvl9000" src="https://github.com/user-attachments/assets/1100e03b-ecd6-4593-9491-9cae3c646d95" />
+
+<img width="1536" height="1024" alt="AF4608DF-F8B7-465C-8DC5-9CDDBE69E4B7" src="https://github.com/user-attachments/assets/87b93e2a-978b-4f13-ab35-aec051ea0289" />
 
 
 **Author:** sinX
